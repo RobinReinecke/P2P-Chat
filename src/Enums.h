@@ -35,6 +35,8 @@ enum class Type {
     ROUTE,
     PLOT,
     HELP,
+    GETPUBLICKEY,
+    GETKEYPAIR,
     INVALID
 };
 
@@ -53,6 +55,8 @@ static Type convertToType(std::string s) {
     if (s == "PING") return Type::PING;
     if (s == "ROUTE") return Type::ROUTE;
     if (s == "PLOT") return Type::PLOT;
+    if (s == "GETPUBLICKEY") return Type::GETPUBLICKEY;
+    if (s == "GETKEYPAIR") return Type::GETKEYPAIR;
     if (s == "HELP") return Type::HELP;
     return Type::INVALID;
 }

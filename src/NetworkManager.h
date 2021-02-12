@@ -4,6 +4,7 @@
 #include <poll.h>
 #include "Logger.h"
 #include "IpManager.h"
+#include "CryptoManager.h"
 #include <nlohmann/json.hpp>
 #include <set>
 
@@ -30,6 +31,18 @@ public:
     void closeAllSockets();
     std::set<std::string> getNeighbors();
 
+    // Crypto Wrapper functions
+    std::string groupEncrypt(const std::string &plaintext, const std::string &groupName) { return crypto.groupEncrypt(plaintext, groupName); }
+    std::string groupDecrypt(const std::string &encryptedText, const std::string &groupName) { return crypto.groupDecrypt(encryptedText, groupName); }
+    std::string publicEncrypt(const std::string &plaintext, const std::string &target) { return crypto.publicEncrypt(plaintext, target); }
+    std::string privateDecrypt(const std::string &encyptedText) { return crypto.privateDecrypt(encyptedText); };
+    bool addPublicKey(const std::string &hostname, const std::string &publicKey) { return crypto.add(hostname, publicKey); }
+    std::string getPublicKey(const std::string &hostname) { return crypto.get(hostname); }
+    const std::string &getPrivateKey() const { return crypto.getPrivateKey(); };
+    bool setGroupKey(const std::string &groupName, const std::string &key) { return crypto.setGroupKey(groupName, key); }
+    void cryptoLoadJson(const json &json) { return crypto.loadJson(json); }
+    json cryptoToJson() { return crypto.toJson(); }
+
 private:
     // fields
     const std::string multicastAddr = "ff12::1234";
@@ -45,6 +58,7 @@ private:
     std::string localHostname;
     std::string ip;
     int messageId = 0;
+    CryptoManager crypto;
 
     // methods
     json buildJson(bool proposal, Type type, const json &payload);

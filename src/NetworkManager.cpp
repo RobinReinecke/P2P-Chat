@@ -4,7 +4,6 @@
 #include "Helper.h"
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <climits>
 #include <chrono>
 #include <ifaddrs.h>
 
@@ -13,7 +12,8 @@
 NetworkManager::NetworkManager(int multicastPort, int peerPort) : multicastPort(multicastPort), peerPort(peerPort),
                                                                   logger(Logger::getInstance()),
                                                                   localHostname(getLocalHostname()),
-                                                                  ip(getLocalIPv6()) {}
+                                                                  ip(getLocalIPv6()),
+                                                                  crypto(localHostname) {}
 
 #pragma endregion
 
@@ -123,7 +123,8 @@ void NetworkManager::sendDiscoveryMessage() const {
     // own ip address, peerPort
     json j{
             {"ip",   ip},
-            {"port", peerPort}
+            {"port", peerPort},
+            {"publicKey", crypto.get(localHostname)}
     };
 
     const auto message = j.dump();
@@ -366,7 +367,7 @@ json NetworkManager::processPeerSockets() {
             return localMessage;
         }
 
-        json j = tryParse(message);
+        json j = tryParse(crypto.privateDecrypt(message));
         // add the hostname of the sending peer
         if (j != nullptr) j["receivedFrom"] = reverseLookup(currentSocket.fd);
         return j;
@@ -451,7 +452,7 @@ void NetworkManager::forwardMessage(const json &message, const std::set<std::str
     const auto rq = message.dump();
     for (auto nextHop : nextHops) {
         auto socket = getSocket(nextHop);
-        if (!sendString(socket, rq)) {
+        if (!sendString(socket, crypto.publicEncrypt(rq, nextHop))) {
             logger.log("Error while sending command to another peer.", LogType::ERROR);
         }
     }

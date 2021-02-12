@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(aufgabe_3)
+project(aufgabe_4)
 
 # add dependencies
 include(cmake/CPM.cmake)
@@ -34,7 +34,7 @@ file(GLOB src "src/*.cpp")
 find_package(Threads REQUIRED)
 
 add_library(clientLib STATIC ${src})
-target_link_libraries(clientLib ${CMAKE_THREAD_LIBS_INIT} nlohmann_json gvc cgraph)
+target_link_libraries(clientLib ${CMAKE_THREAD_LIBS_INIT} nlohmann_json gvc cgraph crypto)
 
 add_executable(client main.cpp)
 target_link_libraries(client clientLib cxxopts)

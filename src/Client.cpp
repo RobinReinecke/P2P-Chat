@@ -13,7 +13,7 @@ Client::Client(bool debug, uint16_t multicastPort, uint16_t peerPort, const std:
         network(NetworkManager(multicastPort, peerPort)),
         logger(Logger::getInstance()),
         topology(Topology(network.getHostname())) {
-    logger.log("Welcome to P2P Chat!");
+    logger.log("Welcome to IBR P2PC!");
     // set debug mode
     logger.setDebug(debug);
     // Add self to the IpManager
@@ -40,8 +40,12 @@ void Client::start() {
     } else {
         logger.log("No other peer connected. Creating a new network.");
         // add self to nicknames
-        nicknames.add(network.getHostname(),
-                      nickname.empty() ? nicknames.generateRandomNickname() : nickname);
+        if (nickname.empty()) {
+            nickname = nicknames.generateRandomNickname();
+            logger.log("Your passed nickname was empty or already taken. Taking '" + nickname + "' now.");
+        }
+
+        nicknames.add(network.getHostname(), nickname);
     }
 
     network.createMulticastSocket();
@@ -72,7 +76,7 @@ void Client::processInput() {
         // Command type is case insensitive
         std::regex commandRegex;
         commandRegex.assign(
-                R"(^/(quit|list|neighbors|plot|((join|leave|nick|gettopic|getmembers)\s+[\w\d]+)|((settopic|msg)\s+[\w\d]+\s+.+)|((route|help)\s*[\w\d]*)|(ping\s+[\w\d\:]+))$)",
+                R"(^/(quit|list|neighbors|plot|getkeypair|((leave|nick|gettopic|getmembers|getpublickey)\s+[\w\d]+)|((settopic|msg)\s+[\w\d]+\s+.+)|((route|help)\s*[\w\d]*)|(ping\s+[\w\d\:]+)|(join\s+[\w\d]+\s+[\w\d]+))$)",
                 std::regex::icase);
 
         if (!regex_match(command, commandRegex)) {
@@ -135,6 +139,13 @@ void Client::processCommand(Type type, std::string &target, const std::string &t
             logger.log("Plot saved at '" + path + "/plot.png'.");
             return;
         }
+        case Type::GETPUBLICKEY:
+            handleInputCommandGetPublicKey(target);
+            return;
+        case Type::GETKEYPAIR:
+            logger.log("Own public key:\n" + network.getPublicKey(network.getHostname()) + "\nOwn private key:\n" +
+                       network.getPrivateKey());
+            return;
         case Type::HELP: {
             handleInputCommandHelp();
             return;
@@ -153,6 +164,8 @@ void Client::processCommand(Type type, std::string &target, const std::string &t
                     return;
                 }
                 if ((nextHops = getNextHops(target, false, true)).empty()) return;
+                // encrypt the message with the group key
+                payload["text"] = network.groupEncrypt(text, target);
             } else {
                 std::string hostname = nicknames.reverseLookup(target);
                 if (hostname.empty()) {
@@ -166,8 +179,9 @@ void Client::processCommand(Type type, std::string &target, const std::string &t
                 if ((nextHops = getNextHops(hostname, true, false)).empty()) return;
                 // replace passed nickname with hostname
                 target = hostname;
+                // encrypt the message with the targets public key
+                payload["text"] = network.publicEncrypt(text, target);
             }
-            payload["text"] = text;
             break;
         }
         case Type::PING: {
@@ -246,6 +260,8 @@ void Client::processCommand(Type type, std::string &target, const std::string &t
                 logger.log("You are already a member of group '" + target + "'.", LogType::WARN);
                 return;
             }
+            // save passed group key for encryption/decryption
+            network.setGroupKey(target, text);
             break;
         }
         default:
@@ -310,8 +326,12 @@ void Client::processMulticastMessage(json &message) {
                 {"topology",  topology.toJson()},
                 {"ips",       ips.toJson()},
                 {"nicknames", nicknames.toJson()},
-                {"groups",    groups.toJson()}
+                {"groups",    groups.toJson()},
+                {"crypto",    network.cryptoToJson()}
         };
+
+        // save the public key of the new peer, so the INIT command is encrypted
+        network.addPublicKey(hostname, message["publicKey"]);
 
         network.sendCommand(Type::INIT, payload, {hostname});
     }
@@ -536,6 +556,8 @@ void Client::receiveNetworkData() {
         nicknames.loadJson(j["payload"]["nicknames"]);
         // load groups
         groups.loadJson(j["payload"]["groups"]);
+        // load crypto
+        network.cryptoLoadJson(j["payload"]["crypto"]);
 
         json connections;
 
@@ -559,7 +581,9 @@ void Client::receiveNetworkData() {
                 {"newPeers",    {{
                                          network.getHostname(), {
                                                                         {"ip", network.getIp()},
-                                                                        {"name", nickname}
+                                                                        {"name", nickname},
+                                                                        {"publicKey", network.getPublicKey(
+                                                                                network.getHostname())}
                                                                 }
                                  }}
                 }
@@ -667,6 +691,7 @@ void Client::handlePeerCommandAddConnection(const json &payload) {
             topology.addPeer(currentHostname);
             nicknames.add(currentHostname, (std::string) item.value()["name"]);
             ips.add(currentHostname, (std::string) item.value()["ip"]);
+            network.addPublicKey(currentHostname, (std::string) item.value()["publicKey"]);
             logger.log("Added new peer (Hostname: '" + currentHostname + "').", LogType::DEBUG);
             logger.log("Peer ('" + nicknames.get(currentHostname) + "') joined the chat.");
         }
@@ -774,10 +799,12 @@ Client::handlePeerCommandSetTopic(const std::string &hostname, const std::string
  * @param text
  */
 void Client::handlePeerCommandMsg(const std::string &hostname, const std::string &recipient, const std::string &text) {
-    if (groups.get(recipient) != nullptr)
-        logger.log("[" + recipient + "] " + nicknames.get(hostname) + ": " + text, LogType::MESSAGE);
-    else
-        logger.log(nicknames.get(hostname) + ": " + text, LogType::MESSAGE);
+    if (groups.get(recipient) != nullptr) {
+        auto message = network.groupDecrypt(text, recipient);
+        logger.log("[" + recipient + "] " + nicknames.get(hostname) +
+                   (message.empty() ? " used another key for encryption." : (": " + message)), LogType::MESSAGE);
+    } else
+        logger.log(nicknames.get(hostname) + ": " + network.privateDecrypt(text), LogType::MESSAGE);
 }
 
 /**
@@ -906,11 +933,27 @@ void Client::handleInputCommandRoute(const std::string &targetNickname) {
 }
 
 /**
+ * Directly list the public key of a specific peer.
+ * @param targetNickname
+ */
+void Client::handleInputCommandGetPublicKey(const std::string &targetNickname) {
+    std::string hostname = nicknames.reverseLookup(targetNickname);
+
+    if (hostname.empty()) {
+        logger.log("Failed to get public key of unknown nickname '" + targetNickname + "'.", LogType::WARN);
+        return;
+    }
+
+    logger.log("Public key of Peer ('" + targetNickname + "'):\n" + network.getPublicKey(hostname));
+}
+
+/**
  * Directly show all available commands.
+ * @param targetNickname
  */
 void Client::handleInputCommandHelp() {
     logger.log("Available commands:");
-    logger.log("JOIN <name>: Join/Create a group");
+    logger.log("JOIN <name> <key>: Join/Create a group and encrypt messages with the passed key");
     logger.log("LEAVE <name>: Leave the group");
     logger.log("NICK <name>: Change own nickname");
     logger.log("LIST: List all existing groups");
@@ -922,7 +965,9 @@ void Client::handleInputCommandHelp() {
     logger.log("PING <name/ip>: Determines availability and RTT to destination");
     logger.log("ROUTE <name>: Shows route to destination including individual hops or full routing table");
     logger.log("PLOT: Plots topology of the network to a file");
-    logger.log("QUIT: Leave P2P Chat");
+    logger.log("GETPUBLICKEY <name>: Print the public key of a specific peer");
+    logger.log("GETKEYPAIR: Print the currently used public and private key");
+    logger.log("QUIT: Leave IBR P2PC");
 }
 
 #pragma endregion

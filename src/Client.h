@@ -11,6 +11,7 @@
 #include "NicknameManager.h"
 #include "MessageManager.h"
 #include "IpManager.h"
+#include "CryptoManager.h"
 
 using json = nlohmann::json;
 
@@ -64,6 +65,7 @@ private:
     void handleInputCommandQuit();
     void handleInputCommandHelp();
     void handleInputCommandGetMembers(const std::string &groupname);
+    void handleInputCommandGetPublicKey(const std::string &targetNickname);
     void handleInputCommandNeighbors();
     void handlePeerCommandPing(const std::string &origin, Type type, long timestamp);
     void handleInputCommandRoute(const std::string &targetNickname);
