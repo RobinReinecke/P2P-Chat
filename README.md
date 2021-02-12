@@ -1,6 +1,7 @@
 # P2P Chat
 A Peer-to-Peer Chat written in C++ for my computer science studies. The specialty of this implementation is the NetworkManager, which is fully relying on POSIX. This means it does not need any networking library like Boost.
-Only dependencies are [nlohmann_json](https://github.com/nlohmann/json) and [cxxopts](https://github.com/jarro2783/cxxopts) to simplify the remaining implementation.
+Further every network communication is RSA e2e-encrypted. Personal and group messages are AES encryted.
+Only external dependencies are [nlohmann_json](https://github.com/nlohmann/json) and [cxxopts](https://github.com/jarro2783/cxxopts) to simplify the remaining implementation.
 
 ### Install Dependencies
 The graphviz library is used to generate a png of the current network topology.
