@@ -13,7 +13,7 @@ Client::Client(bool debug, uint16_t multicastPort, uint16_t peerPort, const std:
         network(NetworkManager(multicastPort, peerPort)),
         logger(Logger::getInstance()),
         topology(Topology(network.getHostname())) {
-    logger.log("Welcome to IBR P2PC!");
+    logger.log("Welcome to P2P Chat!");
     // set debug mode
     logger.setDebug(debug);
     // Add self to the IpManager
@@ -967,7 +967,7 @@ void Client::handleInputCommandHelp() {
     logger.log("PLOT: Plots topology of the network to a file");
     logger.log("GETPUBLICKEY <name>: Print the public key of a specific peer");
     logger.log("GETKEYPAIR: Print the currently used public and private key");
-    logger.log("QUIT: Leave IBR P2PC");
+    logger.log("QUIT: Leave P2P Chat");
 }
 
 #pragma endregion
