@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(aufgabe_4)
+project(P2P_Chat)
 
 # add dependencies
 include(cmake/CPM.cmake)
